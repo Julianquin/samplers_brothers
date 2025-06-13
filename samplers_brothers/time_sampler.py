@@ -20,6 +20,7 @@ class TimeSampler:
     """
 
     def __init__(self, data: pd.DataFrame) -> None:
+        """Initialize the sampler with a long-format DataFrame."""
         required_cols = {"key", "dt_fecha", "target", "cluster"}
         if not required_cols <= set(data.columns):
             raise ValueError(
@@ -52,6 +53,7 @@ class TimeSampler:
 
     @property
     def series_ids(self) -> List[str]:
+        """Return the list of all available series identifiers."""
         return list(self.series_data.columns)
 
     # ------------------------------------------------------------------
@@ -77,7 +79,23 @@ class TimeSampler:
     # public API
     # ------------------------------------------------------------------
     def sample(self, strategy: str, n_samples: int, **kwargs) -> List[str]:
-        """Select a subset of series following ``strategy``."""
+        """Select a subset of series identifiers using a strategy.
+
+        Parameters
+        ----------
+        strategy : str
+            Identifier of the sampling strategy to use.
+        n_samples : int
+            Maximum number of series to return.
+        **kwargs : dict
+            Additional keyword arguments passed to the concrete strategy
+            implementation.
+
+        Returns
+        -------
+        list[str]
+            The identifiers of the selected series.
+        """
         method = getattr(self, f"_sample_{strategy.lower()}", None)
         if method is None:
             raise ValueError(f"Unknown strategy '{strategy}'")
@@ -87,6 +105,20 @@ class TimeSampler:
     # strategies
     # ------------------------------------------------------------------
     def _sample_a(self, n_samples: int, **_: dict) -> List[str]:
+        """Return cluster medoids followed by remaining series.
+
+        Parameters
+        ----------
+        n_samples : int
+            Desired number of series to select.
+        **_ : dict
+            Unused extra keyword arguments.
+
+        Returns
+        -------
+        list[str]
+            Selected series identifiers.
+        """
         medoids = list(self._medoids.values())
         if len(medoids) >= n_samples:
             return medoids[:n_samples]
@@ -94,6 +126,20 @@ class TimeSampler:
         return (medoids + remaining)[:n_samples]
 
     def _sample_k(self, n_samples: int, per_cluster: int = 7) -> List[str]:
+        """Select series closest/farthest to each cluster medoid.
+
+        Parameters
+        ----------
+        n_samples : int
+            Maximum number of series to return.
+        per_cluster : int, default 7
+            Limit of candidates drawn from each cluster before trimming.
+
+        Returns
+        -------
+        list[str]
+            Identifiers of the chosen series.
+        """
         selected: List[str] = []
         for cid, ids in self._clusters.items():
             ids = list(ids)
@@ -118,6 +164,18 @@ class TimeSampler:
         return selected
 
     def _sample_l(self, n_samples: int) -> List[str]:
+        """Stratified sampling within each cluster by volume.
+
+        Parameters
+        ----------
+        n_samples : int
+            Number of series to draw overall.
+
+        Returns
+        -------
+        list[str]
+            Identifiers of the selected series.
+        """
         quotas = {
             cid: int(len(ids) / len(self.series_ids) * n_samples)
             for cid, ids in self._clusters.items()
@@ -154,6 +212,22 @@ class TimeSampler:
         model_proxy=None,
         step: int = 5,
     ) -> List[str]:
+        """Select series iteratively using a forecasting model.
+
+        Parameters
+        ----------
+        n_samples : int
+            Number of series to select.
+        model_proxy : object, optional
+            Object implementing ``fit`` and ``predict`` used to score series.
+        step : int, default 5
+            Number of series added on each iteration.
+
+        Returns
+        -------
+        list[str]
+            Identifiers of the chosen series.
+        """
         if model_proxy is None:
             raise ValueError('model_proxy is required for strategy M')
         selected = self._sample_a(min(len(self.series_ids), step))
@@ -171,6 +245,20 @@ class TimeSampler:
         return selected[:n_samples]
 
     def _sample_n(self, n_samples: int, **kwargs) -> List[str]:
+        """Blend strategies ``K``, ``L`` and ``M``.
+
+        Parameters
+        ----------
+        n_samples : int
+            Total number of series to select.
+        **kwargs : dict
+            Extra arguments passed to ``_sample_m``.
+
+        Returns
+        -------
+        list[str]
+            Combined list of selected series.
+        """
         half = max(1, int(n_samples * 0.5))
         qtr = max(1, int(n_samples * 0.25))
         sample_k = self._sample_k(half)
@@ -184,6 +272,18 @@ class TimeSampler:
         return combined
 
     def _sample_o(self, n_samples: int) -> List[str]:
+        """Stratified sampling giving weight to extreme volumes.
+
+        Parameters
+        ----------
+        n_samples : int
+            Desired number of series to return.
+
+        Returns
+        -------
+        list[str]
+            The identifiers of the selected series.
+        """
         selected: List[str] = []
         global_mean = self._volumes.mean()
         for cid, ids in self._clusters.items():
@@ -213,6 +313,18 @@ class TimeSampler:
         return selected
 
     def _sample_p(self, n_samples: int) -> List[str]:
+        """Select medoid, extremes and high-volume series from each cluster.
+
+        Parameters
+        ----------
+        n_samples : int
+            Maximum number of series to return.
+
+        Returns
+        -------
+        list[str]
+            Identifiers of the selected series.
+        """
         selected: List[str] = []
         for cid, ids in self._clusters.items():
             ids = list(ids)
@@ -244,6 +356,22 @@ class TimeSampler:
         model_proxy=None,
         step: int = 5,
     ) -> List[str]:
+        """Select series iteratively using model scores weighted by volume.
+
+        Parameters
+        ----------
+        n_samples : int
+            Desired number of series.
+        model_proxy : object, optional
+            Object providing ``fit`` and ``predict`` to estimate errors.
+        step : int, default 5
+            Number of series added per iteration.
+
+        Returns
+        -------
+        list[str]
+            Identifiers of the selected series.
+        """
         if model_proxy is None:
             raise ValueError('model_proxy is required for strategy Q')
         selected = self._sample_a(min(len(self.series_ids), step))
@@ -268,6 +396,18 @@ class TimeSampler:
         return selected[:n_samples]
 
     def _sample_r(self, n_samples: int) -> List[str]:
+        """Sample proportionally to cluster size with volume adjustment.
+
+        Parameters
+        ----------
+        n_samples : int
+            Desired number of series.
+
+        Returns
+        -------
+        list[str]
+            Identifiers of the selected series.
+        """
         quotas = {
             cid: int(len(ids) / len(self.series_ids) * n_samples)
             for cid, ids in self._clusters.items()
