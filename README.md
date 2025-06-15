@@ -32,9 +32,12 @@ En nuestro caso de estudio, **disponemos de aproximadamente 35,000 series de tie
 
 Por lo tanto, **es necesario diseñar una metodología de muestreo** que nos permita seleccionar un subconjunto de series de tiempo que sea:
 
-* Representativo de la diversidad de patrones presentes en el universo de series.
-* Suficientemente diverso para capturar tanto las formas típicas como atípicas de evolución temporal.
-* Incluya los diferentes niveles de volumen (series de alta, media y baja magnitud), pues el nivel de la serie afecta la interpretación y el rendimiento del modelo en producción.
+* *Cobertura de patrones*: Representativo de la diversidad de patrones presentes en el universo de series.
+* *Cobertura de volumen*: Incluya los diferentes niveles de volumen (series de alta, media y baja magnitud), pues el nivel de la serie afecta la interpretación y el rendimiento del modelo en producción.
+* *Iteración rápida*: poder añadir/eliminar series conforme veas el rendimiento del modelo sin rehacer todo el muestreo.
+
+
+Ninguna estrategia aislada cubre los tres frentes de manera óptima, pero sí se complementan bien. A continuación te indico qué estrategias implementaría y en qué orden.
 
 ### **Desafíos Técnicos y Consideraciones**
 

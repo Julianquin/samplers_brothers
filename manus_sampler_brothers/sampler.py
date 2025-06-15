@@ -79,7 +79,9 @@ class TimeSampler:
         Método principal para aplicar una estrategia de muestreo.
 
         Args:
-            strategy (str): Identificador de la estrategia a usar (e.g., 'A', 'L', 'K', 'M', etc.).
+            strategy (str): Identificador de la estrategia a usar 
+                ('medoid', 'stratified', 'diversity', 'activeiterative', 
+                'stratified2', 'diversity2', 'activeiterative2','stratified3').
             n_samples (int): El número total de series a seleccionar en la muestra.
             **kwargs: Argumentos adicionales específicos para ciertas estrategias.
 
@@ -97,9 +99,9 @@ class TimeSampler:
 
         return sampling_method(n_samples, **kwargs)
 
-    def _sample_a(self, n_samples: int, **kwargs) -> list:
+    def _sample_medoid(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'A' - Cluster Prototype Sampling.
+        Estrategia 'medoid' - Cluster Prototype Sampling.
         Para cada clúster, selecciona su medoide (la serie real más cercana al centroide del clúster).
         Ajusta para que el total sea n_samples.
         """
@@ -130,16 +132,10 @@ class TimeSampler:
 
         return selected_series
 
-    # Aquí se añadirán las implementaciones para las estrategias L, K, M, N, O, P, Q, R
-    # ...
 
-
-
-
-
-    def _sample_k(self, n_samples: int, **kwargs) -> list:
+    def _sample_diversity(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'K' - Diversity-Weighted Cluster Sampling.
+        Estrategia 'diversity' - Diversity-Weighted Cluster Sampling.
         Intenta seleccionar un número fijo de series por clúster (p. ej., 7) y luego sub-muestrea aleatoriamente
         hasta alcanzar n_samples. Para cada clúster, selecciona:
         1. Las 2 series más cercanas al medoid.
@@ -207,11 +203,9 @@ class TimeSampler:
         return selected_series
 
 
-
-
-    def _sample_l(self, n_samples: int, **kwargs) -> list:
+    def _sample_stratified(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'L' - Stratified Proportional Sampling + Rare Oversampling.
+        Estrategia 'stratified' - Stratified Proportional Sampling + Rare Oversampling.
         1. Asigna cuotas de muestreo a cada clúster proporcionalmente a su tamaño.
         2. Dentro de cada clúster, estratifica las series por volumen (percentiles: bajo 0-30, medio 30-70, alto 70-100).
         3. Muestrea de cada estrato de volumen para cumplir la cuota del clúster.
@@ -315,11 +309,9 @@ class TimeSampler:
         return selected_series
 
 
-
-
-    def _sample_m(self, n_samples: int, **kwargs) -> list:
+    def _sample_activeiterative(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'M' - Active-Iterative Hard-Case Sampling.
+        Estrategia 'activeiterative' - Active-Iterative Hard-Case Sampling.
         1. Empieza con una muestra inicial pequeña usando la estrategia 'A'.
         2. Requiere un modelo proxy (p. ej., un LSTM simple pasado como argumento en **kwargs).
         3. Entrena el modelo en la muestra actual.
@@ -329,10 +321,10 @@ class TimeSampler:
         """
         model_proxy = kwargs.get("model_proxy")
         if model_proxy is None:
-            raise ValueError("La estrategia 'M' requiere un 'model_proxy' en kwargs.")
+            raise ValueError("La estrategia 'activeiterative' requiere un 'model_proxy' en kwargs.")
 
         # 1. Empieza con una muestra inicial pequeña usando la estrategia 'A'.
-        current_sample = self._sample_a(n_samples=min(50, n_samples)) # Muestra inicial de 50 o n_samples si es menor
+        current_sample = self._sample_medoid(n_samples=min(50, n_samples)) # Muestra inicial de 50 o n_samples si es menor
 
         while len(current_sample) < n_samples:
             # Obtener datos para el entrenamiento (series_data de las series en current_sample)
@@ -364,24 +356,22 @@ class TimeSampler:
         return current_sample
 
 
-
-
-    def _sample_n(self, n_samples: int, **kwargs) -> list:
+    def _sample_dsa(self, n_samples: int, **kwargs) -> list:
         """
         Estrategia 'N' - Hybrid Full Coverage Sampling.
         Combina los resultados de varias estrategias.
-        1. Selecciona el 50% de n_samples usando la estrategia 'K'.
-        2. Selecciona el 25% de n_samples usando la estrategia 'L'.
-        3. Selecciona el 25% de n_samples usando la estrategia 'M'.
+        1. Selecciona el 50% de n_samples usando la estrategia 'diversity'.
+        2. Selecciona el 25% de n_samples usando la estrategia 'stratified'.
+        3. Selecciona el 25% de n_samples usando la estrategia 'activeiterative'.
         4. Elimina duplicados y asegura la cobertura de un umbral de volumen global.
         """
         sample_k_count = int(n_samples * 0.5)
         sample_l_count = int(n_samples * 0.25)
         sample_m_count = n_samples - sample_k_count - sample_l_count # Asegurar que la suma sea n_samples
 
-        sample_k = self._sample_k(sample_k_count)
-        sample_l = self._sample_l(sample_l_count)
-        sample_m = self._sample_m(sample_m_count, **kwargs) # Pasar kwargs para el modelo de la estrategia M
+        sample_k = self._sample_diversity(sample_k_count)
+        sample_l = self._sample_stratified(sample_l_count)
+        sample_m = self._sample_activeiterative(sample_m_count, **kwargs) # Pasar kwargs para el modelo de la estrategia M
 
         combined_sample = list(set(sample_k + sample_l + sample_m))
 
@@ -418,11 +408,9 @@ class TimeSampler:
         return combined_sample
 
 
-
-
-    def _sample_o(self, n_samples: int, **kwargs) -> list:
+    def _sample_stratified2(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'O' - Hybrid Stratified Volume Sampling.
+        Estrategia 'stratified2' - Hybrid Stratified Volume Sampling.
         Para cada clúster:
         1. Divide sus series en 3 estratos de volumen (bajo, medio, alto).
         2. Muestrea proporcionalmente del tamaño de cada estrato dentro del clúster.
@@ -502,11 +490,9 @@ class TimeSampler:
         return selected_series
 
 
-
-
-    def _sample_p(self, n_samples: int, **kwargs) -> list:
+    def _sample_diversity2(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'P' - Diversified Sampling with Volume Adjustment.
+        Estrategia 'diversity2' - Diversified Sampling with Volume Adjustment.
         Para cada clúster, selecciona:
         1. La serie más cercana al medoid.
         2. Las 2 series más alejadas.
@@ -575,20 +561,18 @@ class TimeSampler:
         return selected_series
 
 
-
-
-    def _sample_q(self, n_samples: int, **kwargs) -> list:
+    def _sample_activeiterative2(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'Q' - Active Hybrid Sampling.
-        Similar a la 'M', pero al seleccionar los "casos difíciles", prioriza aquellos que tienen un alto error de predicción
+        Estrategia 'activeiterative2' - Active Hybrid Sampling.
+        Similar a la 'activeiterative', pero al seleccionar los "casos difíciles", prioriza aquellos que tienen un alto error de predicción
         Y un alto volumen. Incluye obligatoriamente los outliers de volumen extremo.
         """
         model_proxy = kwargs.get("model_proxy")
         if model_proxy is None:
-            raise ValueError("La estrategia 'Q' requiere un 'model_proxy' en kwargs.")
+            raise ValueError("La estrategia 'activeiterative2' requiere un 'model_proxy' en kwargs.")
 
         # 1. Empieza con una muestra inicial pequeña usando la estrategia 'A'.
-        current_sample = self._sample_a(n_samples=min(50, n_samples)) # Muestra inicial de 50 o n_samples si es menor
+        current_sample = self._sample_medoid(n_samples=min(50, n_samples)) # Muestra inicial de 50 o n_samples si es menor
 
         # Incluir obligatoriamente los outliers de volumen extremo desde el inicio
         global_mean_volume = self.series_volumes.mean()
@@ -621,11 +605,9 @@ class TimeSampler:
         return current_sample
 
 
-
-
-    def _sample_r(self, n_samples: int, **kwargs) -> list:
+    def _sample_stratified3(self, n_samples: int, **kwargs) -> list:
         """
-        Estrategia 'R' - Stratified Proportional Sampling with Volume Reinforcement.
+        Estrategia 'stratified3' - Stratified Proportional Sampling with Volume Reinforcement.
         1. Realiza un muestreo proporcional al tamaño del clúster.
         2. Sobremuestrea clústeres pequeños (<1% del total).
         3. Reemplaza el 20% de las series seleccionadas (las de menor volumen) por las series de mayor volumen global que no fueron seleccionadas.
